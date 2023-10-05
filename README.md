@@ -7,3 +7,5 @@
 
 DeepLearning_whole process文件里面包含了本次项目的全部代码和解释，上面的文件路径可以自己设置
 
+code文件需要用jupyter打开，可以看到我们大部分代码实现的结果
+
