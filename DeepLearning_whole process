@@ -1,0 +1,348 @@
+# 基于深度学习的遥感影像分割
+# 1.第一步要将遥感影像进行切块，分为大小形状相同的分块影像，256*256
+# 将tif栅格格式文件切割成256*256大小的文件，要确保原始图像与标签文件格式一致
+# 输入图像路径
+input_image_path = "C:/PHD/deeplearning_3/raw_image/original_image.tif"
+# 输出目录
+output_dir = "C:/PHD/deeplearning_3/cut_image"
+# 裁剪后的图像大小
+crop_width = 256
+crop_height = 256
+# 定义函数，用于裁剪tif格式文件
+def crop_image(input_image, output_dir, crop_width, crop_height):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    img = Image.open(input_image)
+    width, height = img.size
+
+    num_rows = height // crop_height
+    num_cols = width // crop_width
+
+    for row in range(num_rows):
+        for col in range(num_cols):
+            left = col * crop_width
+            top = row * crop_height
+            right = left + crop_width
+            bottom = top + crop_height
+
+            cropped_img = img.crop((left, top, right, bottom))
+
+            # 只保存尺寸正确的图像
+            if cropped_img.size == (crop_width, crop_height):
+                output_path = os.path.join(output_dir, f"crop_{row}_{col}.tif")
+                cropped_img.save(output_path)
+            else:
+                print(f"未能裁剪的图像：crop_{row}_{col}.tif 已删除")
+                os.remove(input_image)
+
+    print("裁剪完成")
+if __name__ == "__main__":
+    crop_image(input_image_path, output_dir, crop_width, crop_height)
+
+# 2. 第2步，读取文件内的所以图像并将他们转为数组
+
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import os
+import cv2
+import numpy as np
+
+# 指定包含图像的文件夹路径,这个可以参照本地路径保存原始遥感影像
+folder_path = 'C:/PHD/deeplearning_3/cut_image'
+
+# 初始化一个空列表来存储图像数组
+image_data = []
+
+# 遍历文件夹中的所有图像文件
+for filename in os.listdir(folder_path):
+    if filename.endswith(('.jpg', '.jpeg', '.png',".tif")):  # 仅处理特定图像文件类型
+        file_path = os.path.join(folder_path, filename)
+        image = cv2.imread(file_path)  # 使用OpenCV读取图像
+        if image is not None:
+            image_data.append(image)
+
+
+# 将图像数组转换为NumPy数组
+image_data = np.array(image_data)
+
+# 打印数组的形状，这将显示图像数量、高度、宽度和通道数
+print("Shape of image data array:", image_data.shape)
+
+# 部分训练样本可视化
+num_samples_to_visualize = 20  # 可视化前10个样本
+plt.figure(figsize=(15, 6))
+for i in range(num_samples_to_visualize):
+    plt.subplot(4, 5, i + 1)
+    plt.imshow(train_image[i])
+    plt.title(f'Sample {i + 1}')
+    plt.axis('off')
+
+plt.show()
+
+#3. 制作标签并将标签变为能够进行训练的图像，我们可以使用labelme进行标签制作，保存之后会形成一个json文件。详细的labelme制作标签方式可以去网上查，很简单。
+# 下面是将json文件转为png格式图像文件，一定要定位到你下载labelme时指定的文件夹，同时找到labelme_json_to_dataset.exe这个文件才能转成
+# 使用cmd定位到labelme_json_to_dataset.exe，运行以下代码：C:\ProgramData\anaconda3\Scripts>python labelme_json_to_dataset.exe C:/PHD/deeplearning_3/raw_label/original2.json 。后面是json文件位置。处理之后便是png格式的标签文件。
+
+
+# 4.将png格式的标签文件分割
+# 将png格式的标签文件分割成256*256大小的文件，这个文件是由labelme制作成的json文件转png格式文件
+from PIL import Image
+import os
+
+# 设置输入和输出目录
+input_dir = 'C:/PHD/deeplearning_3/raw_label/label_image/'  # 输入目录，包含PNG图像,注意这个文件夹内只能保存一个png图像，不能有其他格式文件
+output_dir = 'C:/PHD/deeplearning_3/cut_label'  # 输出目录，用于存储分割后的子图像
+
+# 确保输出目录存在
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+# 待分割的PNG图像文件列表
+image_files = os.listdir(input_dir)
+
+# 遍历每个PNG图像文件
+for image_file in image_files:
+    if image_file.endswith('.png'):
+        # 打开PNG图像
+        image_path = os.path.join(input_dir, image_file)
+        img = Image.open(image_path)
+        
+        # 获取图像的宽度和高度
+        width, height = img.size
+        
+        # 定义子图像大小
+        sub_image_size = 256
+        
+        # 计算水平和垂直方向上的子图像数量
+        num_horizontal_sub_images = width // sub_image_size
+        num_vertical_sub_images = height // sub_image_size
+        
+        # 遍历子图像
+        for i in range(num_horizontal_sub_images):
+            for j in range(num_vertical_sub_images):
+                left = i * sub_image_size
+                upper = j * sub_image_size
+                right = (i + 1) * sub_image_size
+                lower = (j + 1) * sub_image_size
+                
+                # 裁剪子图像
+                sub_img = img.crop((left, upper, right, lower))
+                
+                # 确保子图像的大小符合规则
+                if sub_img.size == (sub_image_size, sub_image_size):
+                    # 保存符合规则的子图像到输出目录
+                    output_file = f"{image_file[:-4]}_{i}_{j}.png"
+                    output_path = os.path.join(output_dir, output_file)
+                    sub_img.save(output_path)
+                else:
+                    # 子图像大小不符合规则，不保存
+                    pass
+
+# 完成分割和删除不符合规则的子图像
+print("分割和删除不符合规则的子图像完成")
+
+# 5. 现在就可以将分割好的图像进行分配训练集和数据集，这一步可以打乱，也可以按顺序自行分配按照自己的要求，为了方便，我们直接手动将切好的图像按照一定比例进行划分。
+# 6.这一步是将图像数据转为数组用于模型训练
+# 下面是将数据转为数组用于训练
+# 读取文件内的所以图像并将他们转为数组（将原始图像进行转数组操作）
+import os
+import cv2
+import numpy as np
+
+# 指定包含图像的文件夹路径
+folder_path = 'C:\PHD\deeplearning_3\model_data\image_train'
+
+# 初始化一个空列表来存储图像数组
+image_data = []
+
+# 遍历文件夹中的所有图像文件
+for filename in os.listdir(folder_path):
+    if filename.endswith(('.jpg', '.jpeg', '.png',".tif")):  # 仅处理特定图像文件类型
+        file_path = os.path.join(folder_path, filename)
+        image = cv2.imread(file_path)  # 使用OpenCV读取图像
+        if image is not None:
+            image_data.append(image)
+
+# 将图像数组转换为NumPy数组
+image_data = np.array(image_data)
+
+# 打印数组的形状，这将显示图像数量、高度、宽度和通道数
+print("Shape of image data array:", image_data.shape)
+train_image = image_data
+
+# 归一化，将所以像元数值都控制在【0,1】内
+train_image_normal = train_image / 255.0
+input_data = train_image_normal
+
+num_samples_to_visualize = 20  # 可视化前20个样本
+plt.figure(figsize=(15, 6))
+for i in range(num_samples_to_visualize):
+    plt.subplot(4, 5, i + 1)
+    plt.imshow(input_data[i])
+    plt.title(f'Sample {i + 1}')
+    plt.axis('off')
+
+plt.show()
+
+# 下面是将数据转为数组用于训练
+# 读取文件内的所以图像并将他们转为数组（将标签图像进行转数组操作）
+import os
+import cv2
+import numpy as np
+
+# 指定包含图像的文件夹路径
+folder_path = 'C:\PHD\deeplearning_3\model_data\label_train'
+
+# 初始化一个空列表来存储图像数组
+image_data = []
+
+# 遍历文件夹中的所有图像文件
+for filename in os.listdir(folder_path):
+    if filename.endswith(('.jpg', '.jpeg', '.png',".tif")):  # 仅处理特定图像文件类型
+        file_path = os.path.join(folder_path, filename)
+        image = cv2.imread(file_path)  # 使用OpenCV读取图像
+        if image is not None:
+            image_data.append(image)
+
+# 将图像数组转换为NumPy数组
+image_data = np.array(image_data)
+
+# 打印数组的形状，这将显示图像数量、高度、宽度和通道数
+print("Shape of image data array:", image_data.shape)
+
+label_image = image_data
+labels = label_image
+# 由于标签数组形状为(184, 256, 256, 3)，我们要将其转为(184, 256, 256, 1)。不知道为什么要转的可以运行一下，主要是将【0,0,128】转为1，将【0.0.0】转为0。
+# 下面是解释如和转形状，将(184, 256, 256, 3)形状的标签数组转为(184, 256, 256, 1)的数组，主要是将【0,0,128】转为1，将【0.0.0】转为0.在这个示例中，我们首先创建了一个形状为 (184, 256, 256, 3) 的示例四维数组 array_4d。然后，我们定义了要替换的值，replace_values 和替代值 replacement_value。接下来，我们创建一个新的四维数组 new_array_4d，其形状与输入数组相同，但初始值为0。然后，我们使用 np.all 函数创建了两个布尔掩码 mask_replace 和 mask_zero，分别用于标识要替换的值和要替换为零的值的位置。最后，我们根据这些掩码填充新数组，并将其维度从 (184, 256, 256) 扩展为 (184, 256, 256, 1)。
+#请确保用你的实际数组替换示例中的labels，并根据需要自定义要替换的值和替代值。这个代码段演示了如何将数组转换并进行值替换。
+
+replace_values = np.array([0, 0, 128])
+replacement_value = np.array([1])
+
+# 创建一个与输入数组相同形状的新数组，初始值为0
+new_array_4d = np.zeros_like(labels[:, :, :, 0], dtype=np.uint8)
+
+# 使用 np.all 函数找到要替换的值
+mask_replace = np.all(labels == replace_values, axis=-1)
+
+# 使用 np.all 函数找到要替换的值
+mask_zero = np.all(labels == [0, 0, 0], axis=-1)
+
+# 根据替代值和替换值填充新数组
+new_array_4d[mask_replace] = replacement_value
+new_array_4d[mask_zero] = 0  # 将 [0, 0, 0] 替换为 [0]
+
+# 将新数组的维度从 (184, 256, 256) 扩展为 (184, 256, 256, 1)
+new_array_4d = new_array_4d[..., np.newaxis]
+
+# 输出结果
+print(new_array_4d.shape)
+
+labels = new_array_4d
+
+
+num_samples_to_visualize = 20  # 可视化前20个样本
+plt.figure(figsize=(15, 6))
+for i in range(num_samples_to_visualize):
+    plt.subplot(4, 5, i + 1)
+    plt.imshow(labels[i])
+    plt.title(f'Sample {i + 1}')
+    plt.axis('off')
+
+plt.show()
+
+# 7. 创建一个简单的图像分割模型，为了方便运行，我这边列了一个非常简单的分割模型，其实现在现存很多很好的基于深度学习的遥感影像分割的模型，大家可以去好好理解，有的模型可以直接套进来。
+model = keras.Sequential([
+    layers.Input(shape=(256, 256, 3)),  # 输入图像大小
+    layers.Conv2D(32, (3, 3), activation='relu', padding='same'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
+    layers.UpSampling2D((2, 2)),
+    layers.Conv2D(32, (3, 3), activation='relu', padding='same'),
+    layers.UpSampling2D((2, 2)),
+    layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')
+])
+
+# 编译模型
+model.compile(optimizer='adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+# 可视化示例数据
+plt.figure(figsize=(12, 4))
+for i in range(4):
+    plt.subplot(1, 4, i + 1)
+    if i == 0:
+        plt.title('Input Image')
+        plt.imshow(input_data[0])
+    else:
+        plt.title(f'Label {i}')
+        plt.imshow(labels[0, :, :], cmap='gray')
+    plt.axis('off')
+
+plt.show()
+
+# 训练模型
+history = model.fit(input_data, labels, epochs=10, validation_split=0.2)
+
+# 可视化训练和验证损失
+plt.figure(figsize=(12, 4))
+plt.subplot(1, 2, 1)
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+# 可视化训练和验证准确率
+plt.subplot(1, 2, 2)
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.show()
+
+# 8.用测试集测试
+# 将测试集影像转为数组
+import os
+import cv2
+import numpy as np
+
+# 指定包含图像的文件夹路径
+folder_path = 'C:\PHD\deeplearning_3\model_data\image_test'
+
+# 初始化一个空列表来存储图像数组
+image_data = []
+
+# 遍历文件夹中的所有图像文件
+for filename in os.listdir(folder_path):
+    if filename.endswith(('.jpg', '.jpeg', '.png',".tif")):  # 仅处理特定图像文件类型
+        file_path = os.path.join(folder_path, filename)
+        image = cv2.imread(file_path)  # 使用OpenCV读取图像
+        if image is not None:
+            image_data.append(image)
+
+# 将图像数组转换为NumPy数组
+image_data = np.array(image_data)
+
+# 打印数组的形状，这将显示图像数量、高度、宽度和通道数
+print("Shape of image data array:", image_data.shape)
+
+input_data_test = image_data / 255.0
+predictions = model.predict(input_data_test)
+import pandas as pd
+predicted_classes = tf.argmax(predictions, axis=-1).numpy()
+predicted_classes.shape
+到这预测也已基本结束，但是受制于模型的问题，预测的结果会存在较大的差异，预测精度也不够高，这些代码主要是帮助大家初步了解深度学习是如何实现影像的训练集预测的，其中的代码可以直接用也较为简单，其中很多代码可以用其他算法，包括模型的选择，优化器的选择等，都可以自己嵌套使用。
+
+
+
+
